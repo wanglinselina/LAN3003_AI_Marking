@@ -337,24 +337,31 @@
                 let comPtsCol = `Points - ${colQ10}`;
                 let comFbkCol = `Feedback - ${colQ10}`;
 
-                // 動態寫入 Excel 儲存格的輔助函數
+               // 動態寫入 Excel 儲存格的輔助函數
                 function writeCell(colName, value, isRed=false, isBold=false) {
                     let colIdx = headers[colName];
                     if(!colIdx) {
                         colIdx = worksheet.columnCount + 1;
-                        worksheet.getCell(1, colIdx).value = colName;
-                        worksheet.getCell(1, colIdx).font = { bold: true };
+                        let headerCell = worksheet.getCell(1, colIdx);
+                        headerCell.value = colName;
+                        headerCell.font = { bold: true };
                         headers[colName] = colIdx;
                     }
                     let cell = row.getCell(colIdx);
                     cell.value = value;
                     
-                    // 設定樣式：紅色字體、粗體、自動換行
-                    cell.font = { 
-                        color: isRed ? { argb: 'FFFF0000' } : undefined, 
-                        bold: isBold
-                    };
-                    if (isRed) cell.alignment = { wrapText: true, vertical: 'top' };
+                    // 動態組裝乾淨的字體樣式，避免產生 undefined 屬性引發 Excel 錯誤
+                    let newFont = {};
+                    if (isBold) newFont.bold = true;
+                    if (isRed) newFont.color = { argb: 'FFFF0000' };
+                    
+                    if (Object.keys(newFont).length > 0) {
+                        cell.font = newFont;
+                    }
+
+                    if (isRed) {
+                        cell.alignment = { wrapText: true, vertical: 'top' };
+                    }
                 }
 
                 // 寫入獨立得分與紅色評語
