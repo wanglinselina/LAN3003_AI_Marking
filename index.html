@@ -3,39 +3,229 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-width=1.0">
-    <title>LAN3003 智能反思表批改系統</title>
-    <!-- 引入 SheetJS 處理 Excel -->
+    <title>LAN3003 AI 反思表批改系統</title>
+    <!-- 引入 SheetJS -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; max-width: 800px; margin: auto; background-color: #f4f7f6; }
-        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; font-size: 24px; }
-        .btn { background-color: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 15px; }
-        .btn:disabled { background-color: #bdc3c7; cursor: not-allowed; }
-        .btn-success { background-color: #2ecc71; }
-        #logArea { width: 100%; height: 200px; margin-top: 20px; padding: 10px; border: 1px solid #ccc; background: #f9f9f9; overflow-y: scroll; font-size: 14px; }
-        .progress-bar { width: 100%; background-color: #e0e0e0; border-radius: 5px; margin-top: 15px; overflow: hidden; }
-        .progress { height: 20px; background-color: #2ecc71; width: 0%; transition: width 0.3s; }
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --accent-hover: #2980b9;
+            --success-color: #27ae60;
+            --success-hover: #2ecc71;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --text-muted: #7f8c8d;
+        }
+
+        body {
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .app-container {
+            background-color: var(--card-bg);
+            width: 100%;
+            max-width: 750px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        .header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 26px;
+            letter-spacing: 1px;
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 14px;
+            color: #ecf0f1;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 2px dashed #bdc3c7;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            background-color: #fafbfc;
+            transition: all 0.3s ease;
+            margin-bottom: 25px;
+        }
+        
+        .upload-area:hover {
+            border-color: var(--accent-color);
+            background-color: #f1f8ff;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        .file-label:hover {
+            background-color: var(--accent-hover);
+        }
+
+        #fileName {
+            display: block;
+            margin-top: 15px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+        }
+
+        .btn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .btn-primary { background-color: var(--primary-color); }
+        .btn-primary:hover:not(:disabled) { background-color: #1a252f; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(44,62,80,0.2); }
+        
+        .btn-success { background-color: var(--success-color); display: none; }
+        .btn-success:hover { background-color: var(--success-hover); transform: translateY(-2px); box-shadow: 0 4px 10px rgba(39,174,96,0.2); }
+
+        .progress-wrapper {
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 8px;
+            height: 12px;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background-color: var(--success-color);
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        .console-log {
+            width: 100%;
+            height: 180px;
+            padding: 15px;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            background: #2b2b2b;
+            color: #a9b7c6;
+            font-family: "Consolas", monospace;
+            font-size: 13px;
+            resize: none;
+            box-sizing: border-box;
+            line-height: 1.5;
+        }
+
+        .console-log:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+        
+        .status-header {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: var(--text-main);
+            display: flex;
+            justify-content: space-between;
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>📝 LAN3003 智能反思表批改系統 (脫敏安全版)</h1>
-    <p>請先填寫您的 GAS 應用程式網址，然後上傳 <code>AI 評分TEST.xlsx</code> 試卷檔案。系統將自動過濾所有個資，僅傳送系統代號 (Id) 與作答內容進行 AI 評核。</p>
+<div class="app-container">
+    <div class="header">
+        <h1>📝 LAN3003 AI 反思表批改系統</h1>
+        <p>安全、脫敏、全自動的學生反思表智能分析平台</p>
+    </div>
     
-    <label for="gasUrl"><b>GAS Web App 網址：</b></label><br>
-    <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/..." style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">
-    
-    <input type="file" id="fileUpload" accept=".xlsx, .xls" />
-    <button id="startBtn" class="btn" disabled>🚀 開始智能批改</button>
-    <button id="downloadBtn" class="btn btn-success" style="display:none;">📥 下載批改結果</button>
+    <div class="content">
+        <div class="upload-area">
+            <label for="fileUpload" class="file-label">
+                <i class="icon">📁</i> 選擇 Excel 試卷檔案
+            </label>
+            <input type="file" id="fileUpload" accept=".xlsx, .xls" />
+            <span id="fileName">尚未選擇檔案 (請上傳 AI 評分TEST.xlsx 格式)</span>
+        </div>
 
-    <div class="progress-bar"><div id="progress" class="progress"></div></div>
-    <textarea id="logArea" readonly placeholder="系統日誌將顯示於此..."></textarea>
+        <div class="action-buttons">
+            <button id="startBtn" class="btn btn-primary" disabled>🚀 開始智能批改</button>
+            <button id="downloadBtn" class="btn btn-success">📥 下載批改完成檔案</button>
+        </div>
+
+        <div class="progress-wrapper">
+            <div class="status-header">
+                <span>系統執行進度</span>
+                <span id="progressText">0%</span>
+            </div>
+            <div class="progress-bar"><div id="progress" class="progress"></div></div>
+        </div>
+
+        <textarea id="logArea" class="console-log" readonly placeholder="系統準備就緒..."></textarea>
+    </div>
 </div>
 
 <script>
+    // =========================================================================
+    // ⚙️ 系統設定區：請將您部署好的 GAS 網址貼在下方引號內
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzlpDMB5FBbzDZqbmUFhz5e17JYL7MWrTZZeCmh6L3qvRgQ6tar69duR49mU59BAJlT/exec"; 
+    // =========================================================================
+
     let globalWorkbook = null;
     let originalData = [];
     let sheetName = "";
@@ -50,26 +240,36 @@
     const colQ10 = "使用生成式 AI 完成作業或準備評核時，請列舉兩個需要注意的事項，並分別說明原因。（80至120字）";
     const colQ11 = "請舉出一個你將來會應用生成式 AI 協助語文學習的具體例子，並說明原因。（80至120字）\n";
 
+    // 處理檔案上傳
     document.getElementById('fileUpload').addEventListener('change', function(e) {
+        let file = e.target.files[0];
+        if (!file) return;
+        
+        document.getElementById('fileName').innerText = `已選擇：${file.name}`;
         let reader = new FileReader();
+        
         reader.onload = function(e) {
             let data = new Uint8Array(e.target.result);
             globalWorkbook = XLSX.read(data, {type: 'array'});
             sheetName = globalWorkbook.SheetNames[0];
             originalData = XLSX.utils.sheet_to_json(globalWorkbook.Sheets[sheetName], {defval: ""});
             document.getElementById('startBtn').disabled = false;
-            log("📄 檔案讀取成功，共 " + originalData.length + " 筆資料。");
+            log(`[系統] 檔案解析成功，共載入 ${originalData.length} 筆學生資料。`);
+            log(`[系統] 等待執行批改指令...`);
         };
-        reader.readAsArrayBuffer(e.target.files[0]);
+        reader.readAsArrayBuffer(file);
     });
 
+    // 執行批改程序
     document.getElementById('startBtn').addEventListener('click', async function() {
-        let gasUrl = document.getElementById('gasUrl').value.trim();
-        if(!gasUrl) { alert("請先填寫 GAS 網址！"); return; }
+        if(GAS_WEB_APP_URL === "在此處貼上您的_GAS_應用程式網址" || GAS_WEB_APP_URL.trim() === "") {
+            alert("系統錯誤：未設定後端中轉網址，請聯繫系統管理員更新原始碼中的 GAS_WEB_APP_URL。");
+            return;
+        }
         
         this.disabled = true;
         document.getElementById('downloadBtn').style.display = "none";
-        log("🚀 開始批改，執行資料脫敏程序...");
+        log("[系統] 🚀 啟動智能批改引擎，執行嚴格資料脫敏程序...");
 
         for(let i = 0; i < originalData.length; i++) {
             let row = originalData[i];
@@ -87,21 +287,19 @@
                 q11: String(row[colQ11]).trim()
             };
 
-            log(`[${safeData.id}] 正在分析作答...`);
+            log(`[處理中] 正在分析流水號 [${safeData.id}] 的作答內容...`);
             let prompt = buildPrompt(safeData);
 
             try {
-                // 呼叫 GAS 中轉站
-                let response = await fetch(gasUrl, {
+                // 呼叫設定好的 GAS 中轉站
+                let response = await fetch(GAS_WEB_APP_URL, {
                     method: 'POST',
                     body: JSON.stringify({ prompt: prompt })
                 });
                 let resultText = await response.text();
-                
-                // 嘗試解析 AI 回傳的 JSON 格式分數與評語
                 let resultObj = JSON.parse(resultText);
                 
-                // 將結果寫回 originalData (這只在瀏覽器記憶體中進行)
+                // 將結果寫回原始表格 (僅存在於瀏覽器記憶體中)
                 if(safeData.usedAI === "有") {
                     row[`Points - ${colQ5}`] = resultObj.path_points;
                     row[`Feedback - ${colQ5}`] = resultObj.path_feedback;
@@ -112,83 +310,78 @@
                 row[`Points - ${colQ10}`] = resultObj.common_points;
                 row[`Feedback - ${colQ10}`] = resultObj.common_feedback;
 
-                log(`[${safeData.id}] 批改完成。`);
+                log(`[完成] 流水號 [${safeData.id}] 批改完成。`);
 
             } catch (error) {
-                log(`[${safeData.id}] ❌ 批改發生錯誤：${error.message}`);
+                log(`[錯誤] ❌ 流水號 [${safeData.id}] 發生異常：${error.message}`);
             }
 
-            // 更新進度條
-            document.getElementById('progress').style.width = ((i + 1) / originalData.length * 100) + "%";
+            // 更新視覺進度條
+            let progressPercent = Math.round(((i + 1) / originalData.length) * 100);
+            document.getElementById('progress').style.width = progressPercent + "%";
+            document.getElementById('progressText').innerText = progressPercent + "%";
             
-            // 延遲 1 秒，避免觸發 API 或 GAS 頻率限制
+            // 延遲 1 秒以符合 API 速率限制
             await new Promise(r => setTimeout(r, 1000));
         }
 
-        log("✅ 所有試卷批改完畢！可以下載檔案了。");
-        document.getElementById('downloadBtn').style.display = "inline-block";
+        log("[系統] ✅ 所有試卷分析與評分程序執行完畢！");
+        document.getElementById('downloadBtn').style.display = "block";
         document.getElementById('startBtn').disabled = false;
+        document.getElementById('startBtn').innerText = "🔄 重新批改";
     });
 
+    // 下載處理完畢的檔案
     document.getElementById('downloadBtn').addEventListener('click', function() {
         let newWorksheet = XLSX.utils.json_to_sheet(originalData);
         let newWorkbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, sheetName);
-        XLSX.writeFile(newWorkbook, "AI_評分TEST_批改完成.xlsx");
-        log("📥 檔案已觸發下載。");
+        XLSX.writeFile(newWorkbook, "LAN3003_AI反思表_批改完成.xlsx");
+        log("[系統] 📥 已產生並下載批改結果檔案。");
     });
 
+    // 系統日誌打印函數
     function log(msg) {
         let textarea = document.getElementById('logArea');
         textarea.value += msg + "\n";
         textarea.scrollTop = textarea.scrollHeight;
     }
 
-    // 構建傳送給 AI 的提示詞，明確要求不猜測個資，並嚴格遵循 JSON 輸出格式
+    // 構建傳送給 AI 的提示詞
     function buildPrompt(data) {
         let isPathA = (data.usedAI === "有");
-        
         let promptText = `你是一名香港的大學講師，正在批改「LAN3003職業中文傳意」的反思表。
 【最高指導原則】你收到的是一份已脫敏的作答文本，系統代號為 ${data.id}。請直接根據評分標準給出回饋與分數，絕對不要試圖猜測學生身分，也不要生成任何涉及個人的問候語。
 
-【作答內容】
-`;
+【作答內容】\n`;
         if (isPathA) {
             promptText += `學生表示「有」使用 AI。
 第5題 (使用工具及協助方面)：${data.q5}
-第6題 (採用/不採用建議及原因)：${data.q6}
-`;
+第6題 (採用/不採用建議及原因)：${data.q6}\n`;
         } else {
             promptText += `學生表示「沒有」使用 AI。
 第7題 (準備方法)：${data.q7}
 第8題 (挑戰)：${data.q8}
-第9題 (為何沒用AI)：${data.q9}
-`;
+第9題 (為何沒用AI)：${data.q9}\n`;
         }
         promptText += `第10題 (兩項注意事項及原因)：${data.q10}
-第11題 (未來應用例子)：${data.q11}
-
-【評分標準】
-`;
+第11題 (未來應用例子)：${data.q11}\n
+【評分標準】\n`;
         if (isPathA) {
             promptText += `路徑A (第5-6題，滿分5分)：
 優/良(4-5分)：第5題寫出工具名稱並清晰交代協助方面(佔2分)；第6題各舉一「採用」及「不採用」建議並說明原因，原因須連繫本次情景(佔3分)。
 尚可(2-3分)：未交代協助方面；第6題只答單面或原因空泛。
-弱/不足(0-1分)：只寫工具名稱，或虛構/全部採用。
-`;
+弱/不足(0-1分)：只寫工具名稱，或虛構/全部採用。\n`;
         } else {
             promptText += `路徑B (第7-9題，滿分5分)：
 優/良(4-5分)：第7題列出具體做法(佔2分)；第9題根據第8題選項說明不尋求協助原因並連繫任務(佔3分)。
 尚可(2-3分)：第7題空泛；第8與第9題邏輯不一致。
-弱/不足(0-1分)：只寫「沒問題」等；或第7題與第9題互抄(互抄最多1分)。
-`;
+弱/不足(0-1分)：只寫「沒問題」等；或第7題與第9題互抄(互抄最多1分)。\n`;
         }
-        
         promptText += `全體共通題 (第10-11題，滿分5分)：
 優/良(4-5分)：第10題列出兩項注意事項、分別說明原因並連繫評核(佔3分)；第11題提出具體可執行做法且不重複(佔2分)。
 尚可(2-3分)：第10題原因簡略；第11題空泛無步驟。
-弱/不足(0-1分)：未能寫出注意事項；皆空泛。
-
+弱/不足(0-1分)：未能寫出注意事項；皆空泛。\n
 【輸出要求】
 請你「務必」只輸出純 JSON 格式，不要包含 \`\`\`json 標籤或其他文字。格式如下：
 {
@@ -196,8 +389,7 @@
   "path_feedback": "對於路徑的具體評語...",
   "common_points": Y,
   "common_feedback": "對於10-11題的具體評語..."
-}
-`;
+}\n`;
         return promptText;
     }
 </script>
