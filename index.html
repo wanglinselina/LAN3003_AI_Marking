@@ -225,7 +225,7 @@
     let originalData = [];
     let sheetName = "Sheet1";
 
-    // 原始題目欄位定義 (做為預設備用)
+    // 原始題目欄位定義
     const colUsedAI = "你在準備情景對話時，有沒有使用任何生成式 AI 工具？";
     const colQ5 = "你使用了甚麼生成式 AI 工具？你主要希望它在哪些方面提供協助？";
     const colQ6 = "在過程中，你採用了哪些生成式 AI 的建議？哪些建議沒有採用？請各舉一例，並說明原因。（50至100字）";
@@ -235,12 +235,17 @@
     const colQ10 = "使用生成式 AI 完成作業或準備評核時，請列舉兩個需要注意的事項，並分別說明原因。（80至120字）";
     const colQ11 = "請舉出一個你將來會應用生成式 AI 協助語文學習的具體例子，並說明原因。（80至120字）";
 
-    // ✨ 模糊比對欄位名稱輔助函數：解決各平台匯出時帶有隱藏空白或換行的問題
+    // ✨ 修復版模糊比對：嚴格排除 Points 與 Feedback 欄位，避免抓到舊的回饋資料
     function getExactKey(row, keyword) {
-        return Object.keys(row).find(k => k.includes(keyword));
+        return Object.keys(row).find(k => 
+            k.includes(keyword) && 
+            !k.startsWith("Points") && 
+            !k.startsWith("Feedback") && 
+            !k.startsWith("總分")
+        );
     }
 
-    // 處理檔案上傳 (使用 SheetJS 負責穩定讀取)
+    // 處理檔案上傳
     document.getElementById('fileUpload').addEventListener('change', function(e) {
         let file = e.target.files[0];
         if (!file) return;
@@ -251,7 +256,6 @@
         reader.onload = function(e) {
             try {
                 let data = new Uint8Array(e.target.result);
-                // 完美避開 ExcelJS 讀取 Bug
                 let workbook = XLSX.read(data, {type: 'array'});
                 sheetName = workbook.SheetNames[0];
                 originalData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {defval: ""});
@@ -280,7 +284,6 @@
         for(let i = 0; i < originalData.length; i++) {
             let row = originalData[i];
             
-            // ✨ 透過關鍵字模糊比對，精準抓取實際的欄位名稱
             let exactUsedAI = getExactKey(row, "有沒有使用任何生成式 AI 工具") || colUsedAI;
             let exactQ5 = getExactKey(row, "你使用了甚麼生成式 AI 工具") || colQ5;
             let exactQ6 = getExactKey(row, "哪些建議沒有採用") || colQ6;
@@ -290,7 +293,6 @@
             let exactQ10 = getExactKey(row, "列舉兩個需要注意的事項") || colQ10;
             let exactQ11 = getExactKey(row, "將來會應用生成式 AI 協助語文學習") || colQ11;
 
-            // 🔒 資料脫敏：只提取系統編號及作答內容
             let safeData = {
                 id: row["Id"] || `未知ID_${i}`,
                 usedAI: String(row[exactUsedAI] || "").trim(),
@@ -307,7 +309,6 @@
             let prompt = buildPrompt(safeData);
 
             try {
-                // 呼叫中轉站
                 let response = await fetch(GAS_WEB_APP_URL, {
                     method: 'POST',
                     body: JSON.stringify({ prompt: prompt })
@@ -315,8 +316,8 @@
                 let resultText = await response.text();
                 let resultObj = JSON.parse(resultText);
                 
-                // 判斷邏輯分支，寫入成績與評語時對應真實欄位名稱
-                let isPathA = (safeData.usedAI.includes("有"));
+                // 恢復第一版的精準嚴格判斷（完全等於"有"，避免"沒有"被誤判）
+                let isPathA = (safeData.usedAI === "有");
                 if(isPathA) {
                     row[`Points - ${exactQ5}`] = resultObj.path_points;
                     row[`Feedback - ${exactQ5}`] = resultObj.path_feedback;
@@ -328,7 +329,6 @@
                 row[`Points - ${exactQ10}`] = resultObj.common_points;
                 row[`Feedback - ${exactQ10}`] = resultObj.common_feedback;
 
-                // 總分計算
                 let total = (resultObj.path_points || 0) + (resultObj.common_points || 0);
                 row[`總分`] = total;
 
@@ -340,12 +340,10 @@
                 log(`[錯誤] ❌ 流水號 [${safeData.id}] 發生異常：${error.message}`);
             }
 
-            // 進度條更新
             let progressPercent = Math.round(((i + 1) / originalData.length) * 100);
             document.getElementById('progress').style.width = progressPercent + "%";
             document.getElementById('progressText').innerText = progressPercent + "%";
             
-            // 延遲 1 秒，保護 API 不受頻率限制
             await new Promise(r => setTimeout(r, 1000));
         }
 
@@ -355,25 +353,22 @@
         document.getElementById('startBtn').innerText = "🔄 重新批改";
     });
 
-    // 匯出包含樣式的 Excel 檔案 (使用 ExcelJS 負責全新創建與上色)
+    // 匯出包含樣式的 Excel 檔案
     document.getElementById('downloadBtn').addEventListener('click', async function() {
         log("[系統] 正在封裝資料與紅色樣式格式，準備下載...", false);
         try {
             let wb = new ExcelJS.Workbook();
             let ws = wb.addWorksheet(sheetName);
 
-            // 抓取所有現有欄位，確保總分排最後
             let headerSet = new Set();
             originalData.forEach(row => Object.keys(row).forEach(key => headerSet.add(key)));
             headerSet.delete('總分');
             let headers = Array.from(headerSet);
             headers.push('總分');
 
-            // 寫入表頭 (粗體)
             let headerRow = ws.addRow(headers);
             headerRow.font = { bold: true };
 
-            // 寫入資料行並判斷是否需要變換字體顏色
             originalData.forEach(rowData => {
                 let rowValues = headers.map(h => rowData[h] !== undefined ? rowData[h] : "");
                 let newRow = ws.addRow(rowValues);
@@ -381,18 +376,17 @@
                 headers.forEach((h, colIndex) => {
                     let cell = newRow.getCell(colIndex + 1);
                     if (h.includes('Feedback')) {
-                        cell.font = { color: { argb: 'FFFF0000' } }; // 紅字
+                        cell.font = { color: { argb: 'FFFF0000' } }; 
                         cell.alignment = { wrapText: true, vertical: 'top' };
                         ws.getColumn(colIndex + 1).width = 40;
                     } else if (h === '總分') {
-                        cell.font = { color: { argb: 'FFFF0000' }, bold: true }; // 紅色粗體
+                        cell.font = { color: { argb: 'FFFF0000' }, bold: true }; 
                     } else if (h.includes('Points')) {
                         cell.font = { bold: true };
                     }
                 });
             });
 
-            // 觸發下載
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
             const url = window.URL.createObjectURL(blob);
@@ -407,7 +401,6 @@
         }
     });
 
-    // 系統日誌列印器
     function log(msg, isHTML = false) {
         let logArea = document.getElementById('logArea');
         let div = document.createElement('div');
@@ -421,41 +414,49 @@
         logArea.scrollTop = logArea.scrollHeight;
     }
 
-    // AI 系統提示詞構建器
+    // 100% 復原為第一版的 Prompt 結構與行距，確保 AI 評核品質不變
     function buildPrompt(data) {
-        let isPathA = (data.usedAI === "有" || data.usedAI.includes("有"));
+        let isPathA = (data.usedAI === "有");
         let promptText = `你是一名香港的大學講師，正在批改「LAN3003職業中文傳意」的反思表。
 【最高指導原則】你收到的是一份已脫敏的作答文本，系統代號為 ${data.id}。請直接根據評分標準給出回饋與分數，絕對不要試圖猜測學生身分，也不要生成任何涉及個人的問候語。
 
-【作答內容】\n`;
+【作答內容】
+`;
         if (isPathA) {
             promptText += `學生表示「有」使用 AI。
 第5題 (使用工具及協助方面)：${data.q5}
-第6題 (採用/不採用建議及原因)：${data.q6}\n`;
+第6題 (採用/不採用建議及原因)：${data.q6}
+`;
         } else {
             promptText += `學生表示「沒有」使用 AI。
 第7題 (準備方法)：${data.q7}
 第8題 (挑戰)：${data.q8}
-第9題 (為何沒用AI)：${data.q9}\n`;
+第9題 (為何沒用AI)：${data.q9}
+`;
         }
         promptText += `第10題 (兩項注意事項及原因)：${data.q10}
-第11題 (未來應用例子)：${data.q11}\n
-【評分標準】\n`;
+第11題 (未來應用例子)：${data.q11}
+
+【評分標準】
+`;
         if (isPathA) {
             promptText += `路徑A (第5-6題，滿分5分)：
 優/良(4-5分)：第5題寫出工具名稱並清晰交代協助方面(佔2分)；第6題各舉一「採用」及「不採用」建議並說明原因，原因須連繫本次情景(佔3分)。
 尚可(2-3分)：未交代協助方面；第6題只答單面或原因空泛。
-弱/不足(0-1分)：只寫工具名稱，或虛構/全部採用。\n`;
+弱/不足(0-1分)：只寫工具名稱，或虛構/全部採用。
+`;
         } else {
             promptText += `路徑B (第7-9題，滿分5分)：
 優/良(4-5分)：第7題列出具體做法(佔2分)；第9題根據第8題選項說明不尋求協助原因並連繫任務(佔3分)。
 尚可(2-3分)：第7題空泛；第8與第9題邏輯不一致。
-弱/不足(0-1分)：只寫「沒問題」等；或第7題與第9題互抄(互抄最多1分)。\n`;
+弱/不足(0-1分)：只寫「沒問題」等；或第7題與第9題互抄(互抄最多1分)。
+`;
         }
         promptText += `全體共通題 (第10-11題，滿分5分)：
 優/良(4-5分)：第10題列出兩項注意事項、分別說明原因並連繫評核(佔3分)；第11題提出具體可執行做法且不重複(佔2分)。
 尚可(2-3分)：第10題原因簡略；第11題空泛無步驟。
-弱/不足(0-1分)：未能寫出注意事項；皆空泛。\n
+弱/不足(0-1分)：未能寫出注意事項；皆空泛。
+
 【輸出要求】
 請你「務必」只輸出純 JSON 格式，不要包含 \`\`\`json 標籤或其他文字。格式如下：
 {
@@ -463,7 +464,8 @@
   "path_feedback": "對於路徑的具體評語...",
   "common_points": Y,
   "common_feedback": "對於10-11題的具體評語..."
-}\n`;
+}
+`;
         return promptText;
     }
 </script>
