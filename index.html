@@ -196,7 +196,7 @@
                 <i class="icon">📁</i> 選擇 Excel 試卷檔案
             </label>
             <input type="file" id="fileUpload" accept=".xlsx, .xls" />
-            <span id="fileName">尚未選擇檔案 (請上傳 AI 評分TEST.xlsx 格式)</span>
+            <span id="fileName">尚未選擇檔案 (請上傳 Excel 格式試卷)</span>
         </div>
 
         <div class="action-buttons">
@@ -219,28 +219,28 @@
 <script>
     // =========================================================================
     // ⚙️ 系統設定區：請將您部署好的 GAS 網址貼在下方引號內
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzlpDMB5FBbzDZqbmUFhz5e17JYL7MWrTZZeCmh6L3qvRgQ6tar69duR49mU59BAJlT/exec"; 
+    const GAS_WEB_APP_URL = "在此處貼上您的_GAS_應用程式網址"; 
     // =========================================================================
 
     let originalData = [];
     let sheetName = "Sheet1";
 
-    // 原始題目欄位定義 (做為備用)
+    // 原始題目欄位定義 (做為預設備用)
     const colUsedAI = "你在準備情景對話時，有沒有使用任何生成式 AI 工具？";
     const colQ5 = "你使用了甚麼生成式 AI 工具？你主要希望它在哪些方面提供協助？";
     const colQ6 = "在過程中，你採用了哪些生成式 AI 的建議？哪些建議沒有採用？請各舉一例，並說明原因。（50至100字）";
     const colQ7 = "你拿到資料卡後，採用了甚麼方法準備這次情景對話？";
-    const colQ8 = "準備時，以下哪一項對你而言最具挑戰性？\n";
-    const colQ9 = "就你在上一題所選的項目而言，為甚麼沒有尋求生成式 AI 的協助？（50至100字）\n";
+    const colQ8 = "準備時，以下哪一項對你而言最具挑戰性？";
+    const colQ9 = "就你在上一題所選的項目而言，為甚麼沒有尋求生成式 AI 的協助？（50至100字）";
     const colQ10 = "使用生成式 AI 完成作業或準備評核時，請列舉兩個需要注意的事項，並分別說明原因。（80至120字）";
-    const colQ11 = "請舉出一個你將來會應用生成式 AI 協助語文學習的具體例子，並說明原因。（80至120字）\n";
+    const colQ11 = "請舉出一個你將來會應用生成式 AI 協助語文學習的具體例子，並說明原因。（80至120字）";
 
-    // ✨ 新增：模糊比對欄位名稱輔助函數
+    // ✨ 模糊比對欄位名稱輔助函數：解決各平台匯出時帶有隱藏空白或換行的問題
     function getExactKey(row, keyword) {
         return Object.keys(row).find(k => k.includes(keyword));
     }
 
-    // 處理檔案上傳
+    // 處理檔案上傳 (使用 SheetJS 負責穩定讀取)
     document.getElementById('fileUpload').addEventListener('change', function(e) {
         let file = e.target.files[0];
         if (!file) return;
@@ -251,6 +251,7 @@
         reader.onload = function(e) {
             try {
                 let data = new Uint8Array(e.target.result);
+                // 完美避開 ExcelJS 讀取 Bug
                 let workbook = XLSX.read(data, {type: 'array'});
                 sheetName = workbook.SheetNames[0];
                 originalData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {defval: ""});
@@ -279,7 +280,7 @@
         for(let i = 0; i < originalData.length; i++) {
             let row = originalData[i];
             
-            // ✨ 透過關鍵字模糊比對，抓取實際的欄位名稱 (不受換行符號影響)
+            // ✨ 透過關鍵字模糊比對，精準抓取實際的欄位名稱
             let exactUsedAI = getExactKey(row, "有沒有使用任何生成式 AI 工具") || colUsedAI;
             let exactQ5 = getExactKey(row, "你使用了甚麼生成式 AI 工具") || colQ5;
             let exactQ6 = getExactKey(row, "哪些建議沒有採用") || colQ6;
@@ -289,6 +290,7 @@
             let exactQ10 = getExactKey(row, "列舉兩個需要注意的事項") || colQ10;
             let exactQ11 = getExactKey(row, "將來會應用生成式 AI 協助語文學習") || colQ11;
 
+            // 🔒 資料脫敏：只提取系統編號及作答內容
             let safeData = {
                 id: row["Id"] || `未知ID_${i}`,
                 usedAI: String(row[exactUsedAI] || "").trim(),
@@ -305,6 +307,7 @@
             let prompt = buildPrompt(safeData);
 
             try {
+                // 呼叫中轉站
                 let response = await fetch(GAS_WEB_APP_URL, {
                     method: 'POST',
                     body: JSON.stringify({ prompt: prompt })
@@ -312,8 +315,9 @@
                 let resultText = await response.text();
                 let resultObj = JSON.parse(resultText);
                 
-                // 寫入成績與評語時，對應真實的欄位名稱
-                if(safeData.usedAI === "有") {
+                // 判斷邏輯分支，寫入成績與評語時對應真實欄位名稱
+                let isPathA = (safeData.usedAI.includes("有"));
+                if(isPathA) {
                     row[`Points - ${exactQ5}`] = resultObj.path_points;
                     row[`Feedback - ${exactQ5}`] = resultObj.path_feedback;
                 } else {
@@ -324,6 +328,7 @@
                 row[`Points - ${exactQ10}`] = resultObj.common_points;
                 row[`Feedback - ${exactQ10}`] = resultObj.common_feedback;
 
+                // 總分計算
                 let total = (resultObj.path_points || 0) + (resultObj.common_points || 0);
                 row[`總分`] = total;
 
@@ -335,10 +340,12 @@
                 log(`[錯誤] ❌ 流水號 [${safeData.id}] 發生異常：${error.message}`);
             }
 
+            // 進度條更新
             let progressPercent = Math.round(((i + 1) / originalData.length) * 100);
             document.getElementById('progress').style.width = progressPercent + "%";
             document.getElementById('progressText').innerText = progressPercent + "%";
             
+            // 延遲 1 秒，保護 API 不受頻率限制
             await new Promise(r => setTimeout(r, 1000));
         }
 
@@ -348,22 +355,25 @@
         document.getElementById('startBtn').innerText = "🔄 重新批改";
     });
 
-    // 匯出包含樣式的 Excel 檔案
+    // 匯出包含樣式的 Excel 檔案 (使用 ExcelJS 負責全新創建與上色)
     document.getElementById('downloadBtn').addEventListener('click', async function() {
         log("[系統] 正在封裝資料與紅色樣式格式，準備下載...", false);
         try {
             let wb = new ExcelJS.Workbook();
             let ws = wb.addWorksheet(sheetName);
 
+            // 抓取所有現有欄位，確保總分排最後
             let headerSet = new Set();
             originalData.forEach(row => Object.keys(row).forEach(key => headerSet.add(key)));
             headerSet.delete('總分');
             let headers = Array.from(headerSet);
             headers.push('總分');
 
+            // 寫入表頭 (粗體)
             let headerRow = ws.addRow(headers);
             headerRow.font = { bold: true };
 
+            // 寫入資料行並判斷是否需要變換字體顏色
             originalData.forEach(rowData => {
                 let rowValues = headers.map(h => rowData[h] !== undefined ? rowData[h] : "");
                 let newRow = ws.addRow(rowValues);
@@ -371,17 +381,18 @@
                 headers.forEach((h, colIndex) => {
                     let cell = newRow.getCell(colIndex + 1);
                     if (h.includes('Feedback')) {
-                        cell.font = { color: { argb: 'FFFF0000' } };
+                        cell.font = { color: { argb: 'FFFF0000' } }; // 紅字
                         cell.alignment = { wrapText: true, vertical: 'top' };
                         ws.getColumn(colIndex + 1).width = 40;
                     } else if (h === '總分') {
-                        cell.font = { color: { argb: 'FFFF0000' }, bold: true };
+                        cell.font = { color: { argb: 'FFFF0000' }, bold: true }; // 紅色粗體
                     } else if (h.includes('Points')) {
                         cell.font = { bold: true };
                     }
                 });
             });
 
+            // 觸發下載
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
             const url = window.URL.createObjectURL(blob);
@@ -396,6 +407,7 @@
         }
     });
 
+    // 系統日誌列印器
     function log(msg, isHTML = false) {
         let logArea = document.getElementById('logArea');
         let div = document.createElement('div');
@@ -409,6 +421,7 @@
         logArea.scrollTop = logArea.scrollHeight;
     }
 
+    // AI 系統提示詞構建器
     function buildPrompt(data) {
         let isPathA = (data.usedAI === "有" || data.usedAI.includes("有"));
         let promptText = `你是一名香港的大學講師，正在批改「LAN3003職業中文傳意」的反思表。
