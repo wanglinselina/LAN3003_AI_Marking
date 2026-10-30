@@ -225,7 +225,7 @@
     let originalData = [];
     let sheetName = "Sheet1";
 
-    // 題目欄位定義
+    // 原始題目欄位定義 (做為備用)
     const colUsedAI = "你在準備情景對話時，有沒有使用任何生成式 AI 工具？";
     const colQ5 = "你使用了甚麼生成式 AI 工具？你主要希望它在哪些方面提供協助？";
     const colQ6 = "在過程中，你採用了哪些生成式 AI 的建議？哪些建議沒有採用？請各舉一例，並說明原因。（50至100字）";
@@ -235,7 +235,12 @@
     const colQ10 = "使用生成式 AI 完成作業或準備評核時，請列舉兩個需要注意的事項，並分別說明原因。（80至120字）";
     const colQ11 = "請舉出一個你將來會應用生成式 AI 協助語文學習的具體例子，並說明原因。（80至120字）\n";
 
-    // 處理檔案上傳 (使用 SheetJS 負責穩定讀取)
+    // ✨ 新增：模糊比對欄位名稱輔助函數
+    function getExactKey(row, keyword) {
+        return Object.keys(row).find(k => k.includes(keyword));
+    }
+
+    // 處理檔案上傳
     document.getElementById('fileUpload').addEventListener('change', function(e) {
         let file = e.target.files[0];
         if (!file) return;
@@ -246,7 +251,6 @@
         reader.onload = function(e) {
             try {
                 let data = new Uint8Array(e.target.result);
-                // 使用 SheetJS 讀取，避開 ExcelJS 的 XML 解析 Bug
                 let workbook = XLSX.read(data, {type: 'array'});
                 sheetName = workbook.SheetNames[0];
                 originalData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {defval: ""});
@@ -275,16 +279,26 @@
         for(let i = 0; i < originalData.length; i++) {
             let row = originalData[i];
             
+            // ✨ 透過關鍵字模糊比對，抓取實際的欄位名稱 (不受換行符號影響)
+            let exactUsedAI = getExactKey(row, "有沒有使用任何生成式 AI 工具") || colUsedAI;
+            let exactQ5 = getExactKey(row, "你使用了甚麼生成式 AI 工具") || colQ5;
+            let exactQ6 = getExactKey(row, "哪些建議沒有採用") || colQ6;
+            let exactQ7 = getExactKey(row, "採用了甚麼方法準備") || colQ7;
+            let exactQ8 = getExactKey(row, "最具挑戰性") || colQ8;
+            let exactQ9 = getExactKey(row, "為甚麼沒有尋求生成式 AI") || colQ9;
+            let exactQ10 = getExactKey(row, "列舉兩個需要注意的事項") || colQ10;
+            let exactQ11 = getExactKey(row, "將來會應用生成式 AI 協助語文學習") || colQ11;
+
             let safeData = {
                 id: row["Id"] || `未知ID_${i}`,
-                usedAI: String(row[colUsedAI]).trim(),
-                q5: String(row[colQ5]).trim(),
-                q6: String(row[colQ6]).trim(),
-                q7: String(row[colQ7]).trim(),
-                q8: String(row[colQ8]).trim(),
-                q9: String(row[colQ9]).trim(),
-                q10: String(row[colQ10]).trim(),
-                q11: String(row[colQ11]).trim()
+                usedAI: String(row[exactUsedAI] || "").trim(),
+                q5: String(row[exactQ5] || "").trim(),
+                q6: String(row[exactQ6] || "").trim(),
+                q7: String(row[exactQ7] || "").trim(),
+                q8: String(row[exactQ8] || "").trim(),
+                q9: String(row[exactQ9] || "").trim(),
+                q10: String(row[exactQ10] || "").trim(),
+                q11: String(row[exactQ11] || "").trim()
             };
 
             log(`[處理中] 正在分析流水號 [${safeData.id}] 的作答內容...`);
@@ -298,31 +312,29 @@
                 let resultText = await response.text();
                 let resultObj = JSON.parse(resultText);
                 
-                // 將 AI 回傳的成績與評語直接寫入 JSON 陣列中
+                // 寫入成績與評語時，對應真實的欄位名稱
                 if(safeData.usedAI === "有") {
-                    row[`Points - ${colQ5}`] = resultObj.path_points;
-                    row[`Feedback - ${colQ5}`] = resultObj.path_feedback;
+                    row[`Points - ${exactQ5}`] = resultObj.path_points;
+                    row[`Feedback - ${exactQ5}`] = resultObj.path_feedback;
                 } else {
-                    row[`Points - ${colQ7}`] = resultObj.path_points;
-                    row[`Feedback - ${colQ7}`] = resultObj.path_feedback;
+                    row[`Points - ${exactQ7}`] = resultObj.path_points;
+                    row[`Feedback - ${exactQ7}`] = resultObj.path_feedback;
                 }
                 
-                row[`Points - ${colQ10}`] = resultObj.common_points;
-                row[`Feedback - ${colQ10}`] = resultObj.common_feedback;
+                row[`Points - ${exactQ10}`] = resultObj.common_points;
+                row[`Feedback - ${exactQ10}`] = resultObj.common_feedback;
 
-                // 總分計算
                 let total = (resultObj.path_points || 0) + (resultObj.common_points || 0);
                 row[`總分`] = total;
 
                 log(`[完成] 流水號 [${safeData.id}] 批改完成。<br>
-                <span style="color:#2ecc71;">&nbsp;&nbsp;↳ 路徑得分：${resultObj.path_points} \vert{} 共通得分：${resultObj.common_points} | </span><b style="color:#ff4757;">總分：${total}</b><br>
+                <span style="color:#2ecc71;">&nbsp;&nbsp;↳ 路徑得分：${resultObj.path_points} | 共通得分：${resultObj.common_points} | </span><b style="color:#ff4757;">總分：${total}</b><br>
                 <span style="color:#ff4757; font-size:12px;">&nbsp;&nbsp;↳ 評語預覽：${resultObj.path_feedback.substring(0, 35)}...</span>`, true);
 
             } catch (error) {
                 log(`[錯誤] ❌ 流水號 [${safeData.id}] 發生異常：${error.message}`);
             }
 
-            // 更新視覺進度條
             let progressPercent = Math.round(((i + 1) / originalData.length) * 100);
             document.getElementById('progress').style.width = progressPercent + "%";
             document.getElementById('progressText').innerText = progressPercent + "%";
@@ -336,37 +348,32 @@
         document.getElementById('startBtn').innerText = "🔄 重新批改";
     });
 
-    // 匯出包含樣式的 Excel 檔案 (使用 ExcelJS 負責全新創建與上色)
+    // 匯出包含樣式的 Excel 檔案
     document.getElementById('downloadBtn').addEventListener('click', async function() {
         log("[系統] 正在封裝資料與紅色樣式格式，準備下載...", false);
         try {
             let wb = new ExcelJS.Workbook();
             let ws = wb.addWorksheet(sheetName);
 
-            // 1. 動態抓取所有欄位名稱 (確保包含新產生的 Points, Feedback 與總分)
             let headerSet = new Set();
             originalData.forEach(row => Object.keys(row).forEach(key => headerSet.add(key)));
-            headerSet.delete('總分'); // 確保總分排在最後一欄
+            headerSet.delete('總分');
             let headers = Array.from(headerSet);
             headers.push('總分');
 
-            // 2. 寫入表頭並設定粗體
             let headerRow = ws.addRow(headers);
             headerRow.font = { bold: true };
 
-            // 3. 寫入資料並逐格判斷是否需要上色
             originalData.forEach(rowData => {
                 let rowValues = headers.map(h => rowData[h] !== undefined ? rowData[h] : "");
                 let newRow = ws.addRow(rowValues);
 
                 headers.forEach((h, colIndex) => {
                     let cell = newRow.getCell(colIndex + 1);
-                    
-                    // 如果欄位名稱包含 "Feedback" 或者是 "總分"，字體設為紅色
                     if (h.includes('Feedback')) {
                         cell.font = { color: { argb: 'FFFF0000' } };
                         cell.alignment = { wrapText: true, vertical: 'top' };
-                        ws.getColumn(colIndex + 1).width = 40; // 把評語欄位拉寬
+                        ws.getColumn(colIndex + 1).width = 40;
                     } else if (h === '總分') {
                         cell.font = { color: { argb: 'FFFF0000' }, bold: true };
                     } else if (h.includes('Points')) {
@@ -375,7 +382,6 @@
                 });
             });
 
-            // 4. 觸發下載
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
             const url = window.URL.createObjectURL(blob);
@@ -404,7 +410,7 @@
     }
 
     function buildPrompt(data) {
-        let isPathA = (data.usedAI === "有");
+        let isPathA = (data.usedAI === "有" || data.usedAI.includes("有"));
         let promptText = `你是一名香港的大學講師，正在批改「LAN3003職業中文傳意」的反思表。
 【最高指導原則】你收到的是一份已脫敏的作答文本，系統代號為 ${data.id}。請直接根據評分標準給出回饋與分數，絕對不要試圖猜測學生身分，也不要生成任何涉及個人的問候語。
 
