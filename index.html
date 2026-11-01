@@ -219,7 +219,7 @@
 <script>
     // =========================================================================
     // ⚙️ 系統設定區：請將您部署好的 GAS 網址貼在下方引號內
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzlpDMB5FBbzDZqbmUFhz5e17JYL7MWrTZZeCmh6L3qvRgQ6tar69duR49mU59BAJlT/exec"; 
+    const GAS_WEB_APP_URL = "在此處貼上您的_GAS_應用程式網址"; 
     // =========================================================================
 
     let originalData = [];
@@ -235,7 +235,7 @@
     const colQ10 = "使用生成式 AI 完成作業或準備評核時，請列舉兩個需要注意的事項，並分別說明原因。（80至120字）";
     const colQ11 = "請舉出一個你將來會應用生成式 AI 協助語文學習的具體例子，並說明原因。（80至120字）";
 
-    // ✨ 修復版模糊比對：嚴格排除 Points 與 Feedback 欄位，避免抓到舊的回饋資料
+    // 模糊比對：嚴格排除 Points 與 Feedback 欄位，避免抓到舊的回饋資料
     function getExactKey(row, keyword) {
         return Object.keys(row).find(k => 
             k.includes(keyword) && 
@@ -316,7 +316,7 @@
                 let resultText = await response.text();
                 let resultObj = JSON.parse(resultText);
                 
-                // 恢復第一版的精準嚴格判斷（完全等於"有"，避免"沒有"被誤判）
+                // 第一版嚴格判斷（完全等於"有"，避免"沒有"被誤判）
                 let isPathA = (safeData.usedAI === "有");
                 if(isPathA) {
                     row[`Points - ${exactQ5}`] = resultObj.path_points;
@@ -329,7 +329,9 @@
                 row[`Points - ${exactQ10}`] = resultObj.common_points;
                 row[`Feedback - ${exactQ10}`] = resultObj.common_feedback;
 
+                // 總分計算 (防止極端情況超過 9 分)
                 let total = (resultObj.path_points || 0) + (resultObj.common_points || 0);
+                if (total > 9) total = 9;
                 row[`總分`] = total;
 
                 log(`[完成] 流水號 [${safeData.id}] 批改完成。<br>
@@ -392,7 +394,7 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = "LAN3003_AI反思表_批改完成.xlsx";
+            a.download = "LAN3003_AI反思表_批改完成_上限9分版.xlsx";
             a.click();
             window.URL.revokeObjectURL(url);
             log("[系統] 📥 已成功下載批改結果檔案。", false);
@@ -414,11 +416,14 @@
         logArea.scrollTop = logArea.scrollHeight;
     }
 
-    // 100% 復原為第一版的 Prompt 結構與行距，確保 AI 評核品質不變
+    // ✨ 升級版 Prompt：加入最高 9 分限制與語文通順度要求
     function buildPrompt(data) {
         let isPathA = (data.usedAI === "有");
         let promptText = `你是一名香港的大學講師，正在批改「LAN3003職業中文傳意」的反思表。
-【最高指導原則】你收到的是一份已脫敏的作答文本，系統代號為 ${data.id}。請直接根據評分標準給出回饋與分數，絕對不要試圖猜測學生身分，也不要生成任何涉及個人的問候語。
+【最高指導原則】
+1. 你收到的是一份已脫敏的作答文本，系統代號為 ${data.id}。請直接根據評分標準給出回饋與分數，絕對不要試圖猜測學生身分，也不要生成任何涉及個人的問候語。
+2. 為了避免給分過高，全卷最高總分嚴格限制為 9 分（即 path_points 與 common_points 兩部分加總絕對不可超過 9 分）。
+3. 已加入「語言表達」要求：必須嚴格審視學生的表達是否清晰、語句是否通順。若內容達標但語句不通順或詞不達意，必須在該部分扣 1 至 2 分。
 
 【作答內容】
 `;
@@ -438,32 +443,33 @@
 第11題 (未來應用例子)：${data.q11}
 
 【評分標準】
+（註：只要內容與語言表現極佳，各部分可得其滿分，但系統最終兩部分分數相加不可超過 9 分）
 `;
         if (isPathA) {
-            promptText += `路徑A (第5-6題，滿分5分)：
-優/良(4-5分)：第5題寫出工具名稱並清晰交代協助方面(佔2分)；第6題各舉一「採用」及「不採用」建議並說明原因，原因須連繫本次情景(佔3分)。
-尚可(2-3分)：未交代協助方面；第6題只答單面或原因空泛。
-弱/不足(0-1分)：只寫工具名稱，或虛構/全部採用。
+            promptText += `路徑A (第5-6題，部分滿分5分)：
+優/良(4-5分)：第5題寫出工具名稱並清晰交代協助方面；第6題各舉一「採用/不採用」建議並連繫情景說明原因。且表達清晰、語句通順。
+尚可(2-3分)：未交代協助方面；或第6題只答單面/原因空泛；或語句不通順。
+弱/不足(0-1分)：只寫工具名稱，或虛構/全部採用；表達極不清晰。
 `;
         } else {
-            promptText += `路徑B (第7-9題，滿分5分)：
-優/良(4-5分)：第7題列出具體做法(佔2分)；第9題根據第8題選項說明不尋求協助原因並連繫任務(佔3分)。
-尚可(2-3分)：第7題空泛；第8與第9題邏輯不一致。
-弱/不足(0-1分)：只寫「沒問題」等；或第7題與第9題互抄(互抄最多1分)。
+            promptText += `路徑B (第7-9題，部分滿分5分)：
+優/良(4-5分)：第7題列出具體做法；第9題根據第8題選項說明不尋求協助原因並連繫任務。且表達清晰、語句通順。
+尚可(2-3分)：第7題空泛；或第8與第9題邏輯不一致；或語句不通順。
+弱/不足(0-1分)：只寫「沒問題」等；或第7-9題互抄(最多1分)；表達極不清晰。
 `;
         }
-        promptText += `全體共通題 (第10-11題，滿分5分)：
-優/良(4-5分)：第10題列出兩項注意事項、分別說明原因並連繫評核(佔3分)；第11題提出具體可執行做法且不重複(佔2分)。
-尚可(2-3分)：第10題原因簡略；第11題空泛無步驟。
-弱/不足(0-1分)：未能寫出注意事項；皆空泛。
+        promptText += `全體共通題 (第10-11題，部分滿分5分)：
+優/良(4-5分)：第10題列出兩項注意事項、分別說明原因並連繫評核；第11題提出具體可執行做法且不重複。且表達清晰、語句通順。
+尚可(2-3分)：第10題原因簡略；或第11題空泛無步驟；或語句不通順。
+弱/不足(0-1分)：未能寫出注意事項；皆空泛；表達極不清晰。
 
 【輸出要求】
 請你「務必」只輸出純 JSON 格式，不要包含 \`\`\`json 標籤或其他文字。格式如下：
 {
   "path_points": X,
-  "path_feedback": "對於路徑的具體評語...",
+  "path_feedback": "對於路徑的具體評語（請明確指出內容及語句通順度的表現）...",
   "common_points": Y,
-  "common_feedback": "對於10-11題的具體評語..."
+  "common_feedback": "對於10-11題的具體評語（請明確指出內容及語句通順度的表現）..."
 }
 `;
         return promptText;
